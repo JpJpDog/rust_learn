@@ -12,8 +12,6 @@ static pthread_cond_t writer_wait_cond;
 
 // this is protected by read_lock
 static int reader_n;
-
-// these are protected by write_lock
 static int next_writer_id;
 static int last_writer_id;
 
@@ -24,11 +22,6 @@ void reader(void (*func)(void*), void* args) {
   } else {
     int wait_writer_id = next_writer_id - 1;
     while (last_writer_id < wait_writer_id) {
-#ifdef debug
-      printf("### last writer id: %d, wait writer id %d, next writer id: %d\n",
-             last_writer_id, wait_writer_id, next_writer_id);
-      fflush(stdout);
-#endif
       pthread_cond_wait(&writer_wait_cond, &reader_lock);
     }
   }

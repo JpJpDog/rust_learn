@@ -8,4 +8,4 @@ impl.o: $(MY_IMPL)
 	gcc -g -c -o impl.o $^ -lpthread
 
 clean:
-	rm -f impl.o tester
+	rm -f impl.o tester tmp.txt

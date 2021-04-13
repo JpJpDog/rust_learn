@@ -14,7 +14,7 @@ void reader(void (*func)(void*), void* args) {
   }
   pthread_mutex_unlock(&reader_lock);
 
-  printf("reader! read_n: %d!\n", reader_n);
+  // printf("reader! read_n: %d!\n", reader_n);
   func(args);
 
   pthread_mutex_lock(&reader_lock);
@@ -27,7 +27,7 @@ void reader(void (*func)(void*), void* args) {
 void writer(void (*func)(void*), void* args) {
   pthread_mutex_lock(&writer_lock);
 
-  printf("writer!\n");
+  // printf("writer!\n");
   func(args);
 
   pthread_mutex_unlock(&writer_lock);

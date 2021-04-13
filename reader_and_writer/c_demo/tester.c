@@ -17,9 +17,10 @@ int reader_order = 0;
 const int kMaxSleep = 20000;
 const int kMinSleep = 10000;
 
-const int kThreadN = 17;
-const int kWriterThreadN = 3;
-const int kLoopN = 100;
+const int kThreadN = 20;
+const int kWriterThreadN = 5;
+const int kReaderLoopN = 200;
+const int kWriterLoopN = 40;
 
 int make_rand() { return rand() % (kMaxSleep - kMinSleep) + kMinSleep; }
 
@@ -41,11 +42,11 @@ void* routine(void* args) {
   int arg = *(int*)args;
   free(args);
   if (arg == 0) {
-    for (int i = 0; i < kLoopN; i++) {
+    for (int i = 0; i < kReaderLoopN; i++) {
       reader(reader_routine, NULL);
     }
   } else {
-    for (int i = 0; i < kLoopN; i++) {
+    for (int i = 0; i < kWriterLoopN; i++) {
       writer(writer_routine, NULL);
     }
   }

@@ -5,11 +5,13 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "(gdb) Launch",
+            "name": "gcc - Build and debug active file",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/tester",
-            "args": [],
+            "program": "${fileDirname}/tester",
+            "args": [
+                ">tmp.txt"
+            ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
@@ -22,7 +24,8 @@
                     "ignoreFailures": true
                 }
             ],
-            "preLaunchTask": "build with make"
+            "preLaunchTask": "build with make",
+            "miDebuggerPath": "/usr/bin/gdb"
         }
     ]
 }
