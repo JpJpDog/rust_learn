@@ -1,17 +1,21 @@
 #include <pthread.h>
+#include <stdio.h>
 
-pthread_mutex_t reader_lock;
-pthread_mutex_t writer_lock;
-int reader_n;
+#include "reader_writer.h"
 
-void reader() {
+static pthread_mutex_t reader_lock;
+static pthread_mutex_t writer_lock;
+static int reader_n;
+
+void reader(void (*func)(void*), void* args) {
   pthread_mutex_lock(&reader_lock);
   if (reader_n++ == 0) {
     pthread_mutex_lock(&writer_lock);
   }
   pthread_mutex_unlock(&reader_lock);
 
-  // critical section
+  printf("reader! read_n: %d!\n", reader_n);
+  func(args);
 
   pthread_mutex_lock(&reader_lock);
   if (--reader_n == 0) {
@@ -20,21 +24,17 @@ void reader() {
   pthread_mutex_unlock(&reader_lock);
 }
 
-void writer() {
+void writer(void (*func)(void*), void* args) {
   pthread_mutex_lock(&writer_lock);
 
-  // critical section
+  printf("writer!\n");
+  func(args);
 
   pthread_mutex_unlock(&writer_lock);
 }
 
-int init() {
+void init_reader_writer() {
   reader_n = 0;
   pthread_mutex_init(&reader_lock, NULL);
   pthread_mutex_init(&writer_lock, NULL);
-}
-
-int main() {
-  init();
-  return 0;
 }
