@@ -4,7 +4,7 @@
 
 #include "reader_writer.h"
 
-// #define debug
+#define debug
 
 static pthread_mutex_t reader_lock;
 static pthread_mutex_t writer_lock;
@@ -35,8 +35,7 @@ void reader(void (*func)(void*), void* args) {
   func(args);
 
   pthread_mutex_lock(&reader_lock);
-  reader_n--;
-  if (reader_n == 0) {
+  if (--reader_n == 0) {
     pthread_mutex_unlock(&writer_lock);
   }
   pthread_mutex_unlock(&reader_lock);

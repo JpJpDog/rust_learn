@@ -1,5 +1,5 @@
-MY_IMPL = reader_first.c
-# MY_IMPL = everyone_fair.c
+# MY_IMPL = reader_first.c
+MY_IMPL = everyone_fair.c
 
 tester: tester.c impl.o
 	gcc -g -o $@ $^ -lpthread
