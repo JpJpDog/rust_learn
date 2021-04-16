@@ -1,48 +1,72 @@
+use crate::c_cond::CCond;
 use crate::c_mutex::CMutex;
 use crate::rwlock::{RwLock, RwLockOp};
 use std::cell::UnsafeCell;
 
-pub struct RawFairRwLock {
-    r_lock: UnsafeCell<CMutex>,
-    w_lock: UnsafeCell<CMutex>,
-    reader_n: UnsafeCell<u32>,
+struct LockContent {
+    r_lock: CMutex,
+    w_lock: CMutex,
+    w_wait_cond: CCond,
+    reader_n: u32,
+    last_writer_id: u32,
+    next_writer_id: u32,
 }
+
+pub struct RawFairRwLock(UnsafeCell<LockContent>);
 
 impl RwLockOp for RawFairRwLock {
     fn new() -> RawFairRwLock {
         unsafe {
-            RawFairRwLock {
-                r_lock: UnsafeCell::new(CMutex::new()),
-                w_lock: UnsafeCell::new(CMutex::new()),
-                reader_n: UnsafeCell::new(0),
+            RawFairRwLock(UnsafeCell::new(LockContent {
+                r_lock: CMutex::new(),
+                w_lock: CMutex::new(),
+                w_wait_cond: CCond::new(),
+                reader_n: 0,
+                last_writer_id: 0,
+                next_writer_id: 1,
+            }))
+        }
+    }
+
+    unsafe fn lock_reader(&self) {
+        let content = &mut *self.0.get();
+        content.r_lock.lock();
+        if content.reader_n == 0 {
+            content.w_lock.lock();
+        } else {
+            let wait_writer_id = content.next_writer_id - 1;
+            while content.last_writer_id < wait_writer_id {
+                content.w_wait_cond.wait(&mut content.r_lock);
             }
         }
+        content.reader_n += 1;
+        content.r_lock.unlock();
     }
-    unsafe fn lock_reader(&self) {
-        let r_lock = &mut *self.r_lock.get();
-        r_lock.lock();
-        let reader_n = &mut *self.reader_n.get();
-        *reader_n += 1;
-        if *reader_n == 1 {
-            (&mut *self.w_lock.get()).lock();
-        }
-        r_lock.unlock();
-    }
+
     unsafe fn unlock_reader(&self) {
-        let r_lock = &mut *self.r_lock.get();
-        r_lock.lock();
-        let reader_n = &mut *self.reader_n.get();
-        *reader_n -= 1;
-        if *reader_n == 0 {
-            (&mut *self.w_lock.get()).unlock();
+        let content = &mut *self.0.get();
+        content.r_lock.lock();
+        content.reader_n -= 1;
+        if content.reader_n == 0 {
+            content.w_lock.unlock();
         }
-        r_lock.unlock();
+        content.r_lock.unlock();
     }
+
     unsafe fn lock_writer(&self) {
-        (&mut *self.w_lock.get()).lock();
+        let content = &mut *self.0.get();
+        content.r_lock.lock();
+        let writer_id = content.next_writer_id;
+        content.next_writer_id += 1;
+        content.r_lock.unlock();
+        content.w_lock.lock();
+        content.last_writer_id = writer_id;
     }
+
     unsafe fn unlock_writer(&self) {
-        (&mut *self.w_lock.get()).unlock();
+        let content = &mut *self.0.get();
+        content.w_wait_cond.broadcast();
+        content.w_lock.unlock();
     }
 }
 

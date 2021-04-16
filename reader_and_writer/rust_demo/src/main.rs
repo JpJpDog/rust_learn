@@ -1,8 +1,9 @@
+mod c_cond;
 mod c_mutex;
 mod fair_rwlock;
 mod rwlock;
+mod unfair_rwlock;
 
-use fair_rwlock::FairRwLock;
 use rand::prelude::*;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -10,13 +11,17 @@ use std::sync::Arc;
 use std::thread;
 use std::thread::spawn;
 use std::time::Duration;
+// use unfair_rwlock::UnfairRwLock;
+use fair_rwlock::FairRwLock;
 
-const THREAD_N: usize = 10;
+type MyRwLock = FairRwLock<i32>;
+
+const THREAD_N: usize = 20;
 const WRITER_THREAD_N: usize = 3;
 const READER_LOOP_N: u32 = 200;
-const WRITER_LOOP_N: u32 = 40;
-const MAX_SLEEP_TIME: u64 = 100;
-const MIN_SLEEP_TIME: u64 = 10;
+const WRITER_LOOP_N: u32 = 100;
+const MAX_SLEEP_TIME: u64 = 10;
+const MIN_SLEEP_TIME: u64 = 1;
 
 fn rand_sleep_time() -> u64 {
     let mut rng = rand::thread_rng();
@@ -24,20 +29,20 @@ fn rand_sleep_time() -> u64 {
     rand_int % (MAX_SLEEP_TIME - MIN_SLEEP_TIME) + MIN_SLEEP_TIME
 }
 
-fn reader_routine(rwlock: &FairRwLock<i32>) {
+fn reader_routine(rwlock: &MyRwLock) {
     let data = rwlock.read();
     println!("data is {}", *data);
     thread::sleep(Duration::from_millis(rand_sleep_time()))
 }
 
-fn writer_routine(rwlock: &FairRwLock<i32>) {
+fn writer_routine(rwlock: &MyRwLock) {
     let mut data = rwlock.write();
     *data += 1;
     println!("data is {} now", *data);
     thread::sleep(Duration::from_millis(rand_sleep_time()))
 }
 
-fn routine(is_writer: bool, rwlock: &FairRwLock<i32>) {
+fn routine(is_writer: bool, rwlock: &MyRwLock) {
     if is_writer {
         for _ in 0..WRITER_LOOP_N {
             writer_routine(rwlock);
@@ -56,7 +61,7 @@ fn main() {
         is_writer[i] = true;
     }
     is_writer.shuffle(&mut thread_rng());
-    let rwlock = Arc::new(FairRwLock::new(0));
+    let rwlock = Arc::new(MyRwLock::new(0));
     for flag in is_writer {
         let rwlock = Arc::clone(&rwlock);
         let handler = spawn(move || routine(flag, rwlock.as_ref()));
