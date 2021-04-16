@@ -3,7 +3,7 @@ use std::marker::{Send, Sync};
 use std::ops::{Deref, DerefMut};
 
 pub trait RwLockOp {
-    fn new() -> Self;
+    unsafe fn new() -> Self;
     unsafe fn lock_reader(&self);
     unsafe fn unlock_reader(&self);
     unsafe fn lock_writer(&self);
@@ -65,9 +65,11 @@ impl<'a, R: RwLockOp, T> DerefMut for RwLockWriterGuard<'a, R, T> {
 
 impl<R: RwLockOp, T> RwLock<R, T> {
     pub fn new(data: T) -> RwLock<R, T> {
-        RwLock {
-            raw: R::new(),
-            data: UnsafeCell::new(data),
+        unsafe {
+            RwLock {
+                raw: R::new(),
+                data: UnsafeCell::new(data),
+            }
         }
     }
 

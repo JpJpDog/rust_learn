@@ -15,17 +15,15 @@ struct LockContent {
 pub struct RawFairRwLock(UnsafeCell<LockContent>);
 
 impl RwLockOp for RawFairRwLock {
-    fn new() -> RawFairRwLock {
-        unsafe {
-            RawFairRwLock(UnsafeCell::new(LockContent {
-                r_lock: CMutex::new(),
-                w_lock: CMutex::new(),
-                w_wait_cond: CCond::new(),
-                reader_n: 0,
-                last_writer_id: 0,
-                next_writer_id: 1,
-            }))
-        }
+    unsafe fn new() -> RawFairRwLock {
+        RawFairRwLock(UnsafeCell::new(LockContent {
+            r_lock: CMutex::new(),
+            w_lock: CMutex::new(),
+            w_wait_cond: CCond::new(),
+            reader_n: 0,
+            last_writer_id: 0,
+            next_writer_id: 1,
+        }))
     }
 
     unsafe fn lock_reader(&self) {

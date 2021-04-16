@@ -19,7 +19,7 @@ type MyRwLock = FairRwLock<i32>;
 const THREAD_N: usize = 20;
 const WRITER_THREAD_N: usize = 3;
 const READER_LOOP_N: u32 = 200;
-const WRITER_LOOP_N: u32 = 100;
+const WRITER_LOOP_N: u32 = 75;
 const MAX_SLEEP_TIME: u64 = 10;
 const MIN_SLEEP_TIME: u64 = 1;
 

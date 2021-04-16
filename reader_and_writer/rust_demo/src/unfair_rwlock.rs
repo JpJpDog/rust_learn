@@ -11,14 +11,12 @@ struct LockContent {
 pub struct RawUnfairRwLock(UnsafeCell<LockContent>);
 
 impl RwLockOp for RawUnfairRwLock {
-    fn new() -> RawUnfairRwLock {
-        unsafe {
-            RawUnfairRwLock(UnsafeCell::new(LockContent {
-                r_lock: CMutex::new(),
-                w_lock: CMutex::new(),
-                reader_n: 0,
-            }))
-        }
+    unsafe fn new() -> RawUnfairRwLock {
+        RawUnfairRwLock(UnsafeCell::new(LockContent {
+            r_lock: CMutex::new(),
+            w_lock: CMutex::new(),
+            reader_n: 0,
+        }))
     }
     unsafe fn lock_reader(&self) {
         let content = &mut *self.0.get();
