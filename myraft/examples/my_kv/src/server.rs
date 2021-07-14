@@ -6,18 +6,15 @@ use bincode::{deserialize, serialize};
 use clientpb::client_rpc_server::{ClientRpc, ClientRpcServer};
 use clientpb::{ReadRpcReq, ReadRpcRsp, WriteRpcReq, WriteRpcRsp};
 use log::info;
-use myraft::network::MyRaftNetwork;
 use myraft::raft::MyRaft;
-use myraft::storage::MyRaftStorage;
-use myraft::{
-    async_trait::async_trait, raft::RaftApp, AppData, AppDataResponse, ClientWriteRequest, Raft,
-};
+use myraft::{async_trait::async_trait, raft::RaftApp, AppData, AppDataResponse};
 use serde::{Deserialize, Serialize};
 use sled::Db;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::u64;
 use structopt::StructOpt;
+use tokio::sync::RwLock;
 use tokio::{self, spawn};
 use tonic::Code;
 use tonic::{transport::Server, Request, Response, Status};
@@ -52,14 +49,7 @@ pub struct KvApp {
     db: Db,
 }
 
-#[async_trait]
-impl RaftApp for KvApp {
-    fn new(sm_path: &str) -> Self {
-        Self {
-            db: sled::open(sm_path).unwrap(),
-        }
-    }
-
+impl KvApp {
     async fn handle_read(&self, req: ReadRequest) -> Result<ReadResponse> {
         let rsp = self.db.get(&serialize(&req.key)?)?;
         let rsp = match rsp {
@@ -68,7 +58,10 @@ impl RaftApp for KvApp {
         };
         Ok(ReadResponse { data: rsp })
     }
+}
 
+#[async_trait]
+impl RaftApp for KvApp {
     async fn handle_write(&mut self, req: WriteRequest) -> Result<WriteResponse> {
         match req {
             WriteRequest::Insert { key, value } => {
@@ -112,14 +105,11 @@ impl RaftApp for KvApp {
         Ok(())
     }
 
-    type ReadReq = ReadRequest;
-
-    type ReadRsp = ReadResponse;
-
     type WriteReq = WriteRequest;
-
     type WriteRsp = WriteResponse;
 }
+
+//////////////////////////
 
 #[derive(Debug, StructOpt)]
 struct Opt {
@@ -127,19 +117,19 @@ struct Opt {
     id: u64,
     #[structopt(short, long)]
     raft_addr: String,
-    // #[structopt(short, long)]
-    // cluster_id: u64,
+    #[structopt(short, long)]
+    group_id: u64,
     #[structopt(short, long)]
     client_addr: Option<String>,
     #[structopt(short, long)]
     as_init: bool,
 }
 
-type MyKvRaft = Raft<WriteRequest, WriteResponse, MyRaftNetwork<KvApp>, MyRaftStorage<KvApp>>;
+type MyKvRaft = MyRaft<KvApp>;
 
 struct MyClientRpc {
-    core: Arc<MyKvRaft>,
-    storage: Arc<MyRaftStorage<KvApp>>,
+    core: MyKvRaft,
+    storage: Arc<RwLock<KvApp>>,
 }
 
 #[async_trait]
@@ -148,7 +138,7 @@ impl ClientRpc for MyClientRpc {
         let req = request.into_inner();
         let req = ReadRequest { key: req.id };
         info!("read: {:?}", req);
-        match self.storage.handle_read(req).await {
+        match self.storage.read().await.handle_read(req).await {
             Ok(rsp) => {
                 let rsp = ReadRpcRsp {
                     found: rsp.data.is_some(),
@@ -171,9 +161,8 @@ impl ClientRpc for MyClientRpc {
             WriteRequest::Remove { key: req.key }
         };
         info!("write: {:?}", req);
-        match self.core.client_write(ClientWriteRequest::new(req)).await {
+        match self.core.client_write(req).await {
             Ok(rsp) => {
-                let rsp = rsp.data;
                 let rsp = match rsp {
                     WriteResponse::Insert { prev } => WriteRpcRsp {
                         kind: 0,
@@ -196,10 +185,14 @@ impl ClientRpc for MyClientRpc {
     }
 }
 
-async fn start_client_service(raft: &MyRaft<KvApp>, client_addr: String) -> Result<()> {
+async fn start_client_service(
+    raft: MyKvRaft,
+    sm: Arc<RwLock<KvApp>>,
+    client_addr: String,
+) -> Result<()> {
     let client_rpc = MyClientRpc {
-        core: raft.my_core.clone(),
-        storage: raft.my_storage.clone(),
+        core: raft,
+        storage: sm,
     };
     let client_addr = client_addr.parse().unwrap();
     info!("listenning client addr: {:?}", client_addr);
@@ -210,7 +203,8 @@ async fn start_client_service(raft: &MyRaft<KvApp>, client_addr: String) -> Resu
             .await
             .unwrap();
     })
-    .await?;
+    .await
+    .unwrap();
     Ok(())
 }
 
@@ -218,9 +212,16 @@ async fn start_client_service(raft: &MyRaft<KvApp>, client_addr: String) -> Resu
 async fn main() {
     env_logger::init();
     let opt = Opt::from_args();
-    let my_raft = MyRaft::<KvApp>::new(opt.id, opt.raft_addr).await;
-    my_raft.join_cluster(1, opt.as_init).await;
+    let kv_path = format!("kv_store/node_{}", opt.id.to_string());
+    let kv_app = KvApp {
+        db: sled::open(kv_path).unwrap(),
+    };
+    let kv_app = Arc::new(RwLock::new(kv_app));
+    let my_raft = MyKvRaft::new(opt.id, opt.raft_addr, kv_app.clone()).await;
+    my_raft.join_cluster(opt.group_id, opt.as_init).await;
     if let Some(client_addr) = opt.client_addr {
-        start_client_service(&my_raft, client_addr).await.unwrap();
+        start_client_service(my_raft, kv_app, client_addr)
+            .await
+            .unwrap();
     }
 }

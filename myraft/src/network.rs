@@ -60,7 +60,7 @@ impl<T: RaftApp> MyRaftNetwork<T> {
 }
 
 #[async_trait]
-impl<T: RaftApp + Send + Sync + 'static> RaftNetwork<T::WriteReq> for MyRaftNetwork<T> {
+impl<T: RaftApp> RaftNetwork<T::WriteReq> for MyRaftNetwork<T> {
     async fn append_entries(
         &self,
         target: NodeId,
@@ -118,12 +118,12 @@ impl<T: RaftApp + Send + Sync + 'static> RaftNetwork<T::WriteReq> for MyRaftNetw
     }
 }
 
-pub struct MyRaftRpc<T: RaftApp + Send + Sync + 'static> {
+pub struct MyRaftRpc<T: RaftApp> {
     pub core: Arc<Raft<T::WriteReq, T::WriteRsp, MyRaftNetwork<T>, MyRaftStorage<T>>>,
 }
 
 #[async_trait]
-impl<T: RaftApp + Send + Sync + 'static> RaftRpc for MyRaftRpc<T> {
+impl<T: RaftApp> RaftRpc for MyRaftRpc<T> {
     async fn append_entries(
         &self,
         request: Request<RawDataReq>,

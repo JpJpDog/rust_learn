@@ -3,12 +3,13 @@ use async_raft::raft::{Entry, EntryPayload, MembershipConfig};
 use async_raft::storage::{CurrentSnapshotData, HardState, InitialState};
 use async_raft::RaftStorage;
 use async_raft::{async_trait::async_trait, NodeId};
-use tokio::sync::RwLock;
 use bincode::{deserialize, serialize};
 use serde::{Deserialize, Serialize};
 use sled::{Db, IVec, Tree};
 use std::io::Cursor;
+use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::RwLock;
 
 use crate::raft::RaftApp;
 
@@ -128,24 +129,18 @@ impl MyStorageState {
 pub struct MyRaftStorage<T: RaftApp> {
     id: NodeId,
     state: RwLock<MyStorageState>,
-    sm: RwLock<T>,
+    sm: Arc<RwLock<T>>,
 }
 
 impl<T: RaftApp> MyRaftStorage<T> {
-    pub fn new(id: NodeId) -> Self {
+    pub fn new(id: NodeId, sm: Arc<RwLock<T>>) -> Self {
         let node_dir = format!("{}/node_{}", STORE_DIR, &id.to_string());
         let state_path = format!("{}/state", &node_dir);
-        let sm_path = format!("{}/sm", &node_dir);
         Self {
             id,
             state: RwLock::new(MyStorageState::new(&state_path).unwrap()),
-            sm: RwLock::new(T::new(&sm_path)),
+            sm,
         }
-    }
-
-    pub async fn handle_read(&self, req: T::ReadReq) -> Result<T::ReadRsp> {
-        let sm = self.sm.read().await;
-        sm.handle_read(req).await
     }
 
     // get the last applied memconfig request or get init one
@@ -193,7 +188,7 @@ impl<T: RaftApp> MyRaftStorage<T> {
 }
 
 #[async_trait]
-impl<T: RaftApp + Sync + Send + 'static> RaftStorage<T::WriteReq, T::WriteRsp>
+impl<T: RaftApp> RaftStorage<T::WriteReq, T::WriteRsp>
     for MyRaftStorage<T>
 {
     type Snapshot = Cursor<Vec<u8>>;
@@ -299,6 +294,7 @@ impl<T: RaftApp + Sync + Send + 'static> RaftStorage<T::WriteReq, T::WriteRsp>
     }
 
     async fn replicate_to_state_machine(&self, entries: &[(&u64, &T::WriteReq)]) -> Result<()> {
+        // let mut sm = self.sm.write().await;
         let mut sm = self.sm.write().await;
         let state = self.state.write().await;
         for (index, entry) in entries {

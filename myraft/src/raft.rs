@@ -3,28 +3,25 @@ use crate::raftpb::raft_rpc_server::RaftRpcServer;
 use crate::{network::MyRaftNetwork, storage::MyRaftStorage};
 use anyhow::Result;
 use async_raft::async_trait::async_trait;
+use async_raft::raft::ClientWriteRequest;
 use async_raft::{AppData, AppDataResponse};
 use async_raft::{Config, NodeId, Raft};
 use log::{error, info};
-use serde::{de::DeserializeOwned, Serialize};
 use std::collections::HashMap;
 use std::env;
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::spawn;
+use tokio::sync::RwLock;
 use tonic::transport::Server;
 use zookeeper::{Acl, CreateMode, WatchedEvent, WatchedEventType, Watcher, ZkError, ZooKeeper};
 
 #[async_trait]
-pub trait RaftApp {
-    type ReadReq: Serialize + DeserializeOwned + 'static + Send;
-    type ReadRsp: Serialize + DeserializeOwned + 'static + Send;
+pub trait RaftApp: Send + Sync + 'static {
     type WriteReq: AppData;
     type WriteRsp: AppDataResponse;
 
-    fn new(sm_path: &str) -> Self;
-    async fn handle_read(&self, req: Self::ReadReq) -> Result<Self::ReadRsp>;
     async fn handle_write(&mut self, req: Self::WriteReq) -> Result<Self::WriteRsp>;
     async fn make_snapshot(&self) -> Result<Vec<u8>>;
     async fn handle_snapshot(&self, snap: &Vec<u8>) -> Result<()>;
@@ -62,19 +59,18 @@ impl Watcher for NodeWatcher {
     }
 }
 
-pub struct MyRaft<T: RaftApp + Send + Sync + 'static> {
-    pub my_network: Arc<MyRaftNetwork<T>>,
+pub struct MyRaft<T: RaftApp> {
+    my_network: Arc<MyRaftNetwork<T>>,
     pub my_storage: Arc<MyRaftStorage<T>>,
-    pub my_config: Arc<Config>,
-    pub my_core: Arc<Raft<T::WriteReq, T::WriteRsp, MyRaftNetwork<T>, MyRaftStorage<T>>>,
+    my_core: Arc<Raft<T::WriteReq, T::WriteRsp, MyRaftNetwork<T>, MyRaftStorage<T>>>,
     my_id: NodeId,
     my_addr: String,
 }
 
-impl<T: RaftApp + Send + Sync + 'static> MyRaft<T> {
-    pub async fn new(id: NodeId, raft_addr: String) -> Self {
+impl<T: RaftApp> MyRaft<T> {
+    pub async fn new(id: NodeId, raft_addr: String, sm: Arc<RwLock<T>>) -> Self {
         let my_network = Arc::new(MyRaftNetwork::<T>::new(id, raft_addr.clone()));
-        let my_storage = Arc::new(MyRaftStorage::<T>::new(id));
+        let my_storage = Arc::new(MyRaftStorage::<T>::new(id, sm));
         let my_config = Arc::new(
             Config::build("test".into())
                 .validate()
@@ -101,7 +97,6 @@ impl<T: RaftApp + Send + Sync + 'static> MyRaft<T> {
         Self {
             my_network,
             my_storage,
-            my_config,
             my_core,
             my_id: id,
             my_addr: raft_addr,
@@ -186,21 +181,26 @@ impl<T: RaftApp + Send + Sync + 'static> MyRaft<T> {
                 let metrics = my_core.metrics().borrow().clone();
                 if let Some(leader_id) = metrics.current_leader {
                     if leader_id == my_id {
-                        // let mut add_futures = vec![];
                         for add in adds {
                             my_core.add_non_voter(add).await.unwrap();
                             info!("added non voter {}", add);
-                            // add_futures.push(my_core.add_non_voter(add));
                         }
-                        // join_all(add_futures).await;
                         my_core.change_membership(members).await.unwrap();
                     }
                 } else {
-                    // panic!("no leader now!");s
+                    // panic!("no leader now!");
                 }
                 info!("watching {}", watch_path);
                 let _ = receiver.recv().unwrap();
             }
         });
+    }
+
+    pub async fn client_write(&self, req: T::WriteReq) -> Result<T::WriteRsp> {
+        let rsp = self
+            .my_core
+            .client_write(ClientWriteRequest::new(req))
+            .await?;
+        Ok(rsp.data)
     }
 }
