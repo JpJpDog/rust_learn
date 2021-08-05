@@ -1,7 +1,9 @@
+use iter::Iterator;
+
 use crate::linklist::LinkList;
 
-mod linklist;
 mod iter;
+mod linklist;
 
 fn main() {
     let mut list = LinkList::new();
@@ -10,5 +12,8 @@ fn main() {
     list.pop_front();
     list.pop_back();
     list.len();
-    println!("Hello, world!");
+    let mut iter = list.iter();
+    iter.next();
+    let mut iter = list.rev_iter();
+    iter.prev();
 }
