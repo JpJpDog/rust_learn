@@ -24,6 +24,7 @@ impl<T> LinkNode<T> {
     }
 }
 
+#[derive(Clone)]
 pub struct LinkList<T> {
     len: usize,
     head: RcNode<T>,
@@ -31,21 +32,6 @@ pub struct LinkList<T> {
 }
 
 impl<T> LinkList<T> {
-    // fn insert_before(at: RcNode<T>, item: RcNode<T>) {
-    //     let prev = (*at)
-    //         .borrow_mut()
-    //         .prev
-    //         .replace(Rc::downgrade(&item))
-    //         .unwrap();
-    //     let prev_strong = Weak::upgrade(&prev).unwrap();
-    //     {
-    //         let mut item = (*item).borrow_mut();
-    //         item.next = Some(at);
-    //         item.prev = Some(prev);
-    //     }
-    //     (*prev_strong).borrow_mut().next = Some(item);
-    // }
-
     fn insert_after(at: RcNode<T>, item: RcNode<T>) {
         let next = (*at).borrow_mut().next.replace(Rc::clone(&item)).unwrap();
         (*next).borrow_mut().prev = Some(Rc::downgrade(&item));
@@ -54,6 +40,14 @@ impl<T> LinkList<T> {
             item.next = Some(next);
             item.prev = Some(Rc::downgrade(&at));
         }
+    }
+
+    fn remove(at: RcNode<T>) -> RcNode<T> {
+        let prev = Weak::upgrade(&(*at).borrow_mut().prev.take().unwrap()).unwrap();
+        let next = (*at).borrow_mut().next.take().unwrap();
+        (*next).borrow_mut().prev = Some(Rc::downgrade(&prev));
+        (*prev).borrow_mut().next = Some(next);
+        at
     }
 }
 
@@ -107,13 +101,55 @@ impl<T> LinkList<T> {
     pub fn push_front(&mut self, item: T) -> WeakNode<T> {
         Self::push_front_node(self, LinkNode::wrap(item))
     }
+
+    pub fn pop_back_node(&mut self) -> Option<RcNode<T>> {
+        if self.len == 0 {
+            return None;
+        }
+        self.len -= 1;
+        let at = Weak::upgrade(&self.tail).unwrap();
+        let at = Weak::upgrade((*at).borrow_mut().prev.as_mut().unwrap()).unwrap();
+        Some(Self::remove(at))
+    }
+
+    pub fn pop_front_node(&mut self) -> Option<RcNode<T>> {
+        if self.len == 0 {
+            return None;
+        }
+        self.len -= 1;
+        let at = (*self.head).borrow_mut().next.clone().unwrap();
+        Some(Self::remove(at))
+    }
+
+    pub fn pop_back(&mut self) -> Option<T> {
+        if let Some(back) = self.pop_back_node() {
+            Some(Rc::try_unwrap(back).ok().unwrap().into_inner().val.unwrap())
+        } else {
+            None
+        }
+    }
+
+    pub fn pop_front(&mut self) -> Option<T> {
+        if let Some(front) = self.pop_front_node() {
+            Some(
+                Rc::try_unwrap(front)
+                    .ok()
+                    .unwrap()
+                    .into_inner()
+                    .val
+                    .unwrap(),
+            )
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
 
-    fn check_list(list: LinkList<i32>, v: Vec<i32>) {
+    fn check_list(list: &LinkList<i32>, v: Vec<i32>) {
         assert_eq!(list.len(), v.len());
         let mut prev = list.head.clone();
         for x in v.iter() {
@@ -144,7 +180,7 @@ mod test {
         list.push_back(1);
         list.push_back(2);
         list.push_back(3);
-        check_list(list, vec![1, 2, 3]);
+        check_list(&list, vec![1, 2, 3]);
     }
 
     #[test]
@@ -153,7 +189,7 @@ mod test {
         list.push_front(3);
         list.push_front(2);
         list.push_front(1);
-        check_list(list, vec![1, 2, 3]);
+        check_list(&list, vec![1, 2, 3]);
     }
 
     #[test]
@@ -163,6 +199,38 @@ mod test {
         list.push_back(3);
         list.push_back(4);
         list.push_front(1);
-        check_list(list, vec![1, 2, 3, 4]);
+        check_list(&list, vec![1, 2, 3, 4]);
+    }
+
+    fn init_list() -> LinkList<i32> {
+        let mut list = LinkList::new();
+        list.push_back(1);
+        list.push_back(2);
+        list.push_back(3);
+        list
+    }
+
+    #[test]
+    fn test_pop_back() {
+        let mut list = init_list();
+        assert_eq!(list.pop_back().unwrap(), 3);
+        check_list(&list, vec![1, 2]);
+        assert_eq!(list.pop_back().unwrap(), 2);
+        check_list(&list, vec![1]);
+        assert_eq!(list.pop_back().unwrap(), 1);
+        check_list(&list, vec![]);
+        assert!(list.pop_back().is_none());
+    }
+
+    #[test]
+    fn test_pop_front() {
+        let mut list = init_list();
+        assert_eq!(list.pop_front().unwrap(), 1);
+        check_list(&list, vec![2, 3]);
+        assert_eq!(list.pop_front().unwrap(), 2);
+        check_list(&list, vec![3]);
+        assert_eq!(list.pop_front().unwrap(), 3);
+        check_list(&list, vec![]);
+        assert!(list.pop_back().is_none());
     }
 }
