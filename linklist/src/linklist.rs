@@ -3,35 +3,50 @@ use std::{
     rc::{Rc, Weak},
 };
 
+pub type RcNode<T> = Rc<RefCell<LinkNode<T>>>;
+
+pub type WeakNode<T> = Weak<RefCell<LinkNode<T>>>;
+
 pub struct LinkNode<T> {
     pub val: Option<T>,
-    next: Option<Rc<RefCell<LinkNode<T>>>>,
-    prev: Option<Weak<RefCell<LinkNode<T>>>>,
+    next: Option<RcNode<T>>,
+    prev: Option<WeakNode<T>>,
+}
+
+impl<T> LinkNode<T> {
+    #[inline]
+    fn wrap(x: T) -> RcNode<T> {
+        Rc::new(RefCell::new(Self {
+            val: Some(x),
+            next: None,
+            prev: None,
+        }))
+    }
 }
 
 pub struct LinkList<T> {
     len: usize,
-    head: Rc<RefCell<LinkNode<T>>>,
-    tail: Weak<RefCell<LinkNode<T>>>,
+    head: RcNode<T>,
+    tail: WeakNode<T>,
 }
 
 impl<T> LinkList<T> {
-    fn insert_before(at: Rc<RefCell<LinkNode<T>>>, item: Rc<RefCell<LinkNode<T>>>) {
-        let prev = (*at)
-            .borrow_mut()
-            .prev
-            .replace(Rc::downgrade(&item))
-            .unwrap();
-        let prev_strong = Weak::upgrade(&prev).unwrap();
-        {
-            let mut item = (*item).borrow_mut();
-            item.next = Some(at);
-            item.prev = Some(prev);
-        }
-        (*prev_strong).borrow_mut().next = Some(item);
-    }
+    // fn insert_before(at: RcNode<T>, item: RcNode<T>) {
+    //     let prev = (*at)
+    //         .borrow_mut()
+    //         .prev
+    //         .replace(Rc::downgrade(&item))
+    //         .unwrap();
+    //     let prev_strong = Weak::upgrade(&prev).unwrap();
+    //     {
+    //         let mut item = (*item).borrow_mut();
+    //         item.next = Some(at);
+    //         item.prev = Some(prev);
+    //     }
+    //     (*prev_strong).borrow_mut().next = Some(item);
+    // }
 
-    fn insert_after(at: Rc<RefCell<LinkNode<T>>>, item: Rc<RefCell<LinkNode<T>>>) {
+    fn insert_after(at: RcNode<T>, item: RcNode<T>) {
         let next = (*at).borrow_mut().next.replace(Rc::clone(&item)).unwrap();
         (*next).borrow_mut().prev = Some(Rc::downgrade(&item));
         {
@@ -69,28 +84,28 @@ impl<T> LinkList<T> {
         self.len
     }
 
-    pub fn push_back(&mut self, item: T) -> Weak<RefCell<LinkNode<T>>> {
+    pub fn push_back_node(&mut self, item: RcNode<T>) -> WeakNode<T> {
         self.len += 1;
-        let item = Rc::new(RefCell::new(LinkNode {
-            val: Some(item),
-            next: None,
-            prev: None,
-        }));
         let item_weak = Rc::downgrade(&item);
-        Self::insert_before(Weak::upgrade(&self.tail).unwrap(), item);
+        let at = Weak::upgrade(&self.tail).unwrap();
+        let at = Weak::upgrade((*at).borrow_mut().prev.as_mut().unwrap()).unwrap();
+        Self::insert_after(at, item);
         item_weak
     }
 
-    pub fn push_front(&mut self, item: T) -> Weak<RefCell<LinkNode<T>>> {
+    pub fn push_front_node(&mut self, item: RcNode<T>) -> WeakNode<T> {
         self.len += 1;
-        let item = Rc::new(RefCell::new(LinkNode {
-            val: Some(item),
-            next: None,
-            prev: None,
-        }));
         let item_weak = Rc::downgrade(&item);
         Self::insert_after(Rc::clone(&self.head), item);
         item_weak
+    }
+
+    pub fn push_back(&mut self, item: T) -> WeakNode<T> {
+        Self::push_back_node(self, LinkNode::wrap(item))
+    }
+
+    pub fn push_front(&mut self, item: T) -> WeakNode<T> {
+        Self::push_front_node(self, LinkNode::wrap(item))
     }
 }
 
