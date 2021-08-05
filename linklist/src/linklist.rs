@@ -64,7 +64,13 @@ impl<T> LinkList<T> {
         }
     }
 
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
     pub fn push_back(&mut self, item: T) -> Weak<RefCell<LinkNode<T>>> {
+        self.len += 1;
         let item = Rc::new(RefCell::new(LinkNode {
             val: Some(item),
             next: None,
@@ -76,6 +82,7 @@ impl<T> LinkList<T> {
     }
 
     pub fn push_front(&mut self, item: T) -> Weak<RefCell<LinkNode<T>>> {
+        self.len += 1;
         let item = Rc::new(RefCell::new(LinkNode {
             val: Some(item),
             next: None,
@@ -84,5 +91,63 @@ impl<T> LinkList<T> {
         let item_weak = Rc::downgrade(&item);
         Self::insert_after(Rc::clone(&self.head), item);
         item_weak
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn check_list(list: LinkList<i32>, v: Vec<i32>) {
+        assert_eq!(list.len(), v.len());
+        let mut prev = list.head.clone();
+        for x in v.iter() {
+            let n = (*prev).borrow().next.clone().unwrap();
+            assert_eq!((*n).borrow().val.unwrap(), *x);
+            prev = n;
+        }
+        assert_eq!(
+            Rc::downgrade((*prev).borrow().next.as_ref().unwrap()).as_ptr(),
+            list.tail.as_ptr()
+        );
+        let mut next = Weak::upgrade(&list.tail).unwrap();
+        for x in v.into_iter().rev() {
+            let n = (*next).borrow().prev.clone().unwrap();
+            let n = Weak::upgrade(&n).unwrap();
+            assert_eq!((*n).borrow().val.unwrap(), x);
+            next = n;
+        }
+        assert_eq!(
+            (*next).borrow().prev.as_ref().unwrap().as_ptr(),
+            Rc::downgrade(&list.head).as_ptr()
+        );
+    }
+
+    #[test]
+    fn test_push_back() {
+        let mut list = LinkList::new();
+        list.push_back(1);
+        list.push_back(2);
+        list.push_back(3);
+        check_list(list, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_push_front() {
+        let mut list = LinkList::new();
+        list.push_front(3);
+        list.push_front(2);
+        list.push_front(1);
+        check_list(list, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_push() {
+        let mut list = LinkList::new();
+        list.push_front(2);
+        list.push_back(3);
+        list.push_back(4);
+        list.push_front(1);
+        check_list(list, vec![1, 2, 3, 4]);
     }
 }
