@@ -35,12 +35,14 @@ pub struct LinkList<T> {
 impl<T> LinkList<T> {
     #[inline]
     fn first_node(&self) -> RcNode<T> {
-        (*self.head).borrow_mut().next.clone().unwrap()
+        self.head.borrow_mut().next.clone().unwrap()
     }
 
     #[inline]
     fn last_node(&self) -> RcNode<T> {
-        (*self.tail.upgrade().unwrap())
+        self.tail
+            .upgrade()
+            .unwrap()
             .borrow_mut()
             .prev
             .as_mut()
@@ -50,20 +52,20 @@ impl<T> LinkList<T> {
     }
 
     fn insert_between(after: RcNode<T>, before: RcNode<T>, item: RcNode<T>) {
-        (*before).borrow_mut().prev = Some(Rc::downgrade(&item));
+        before.borrow_mut().prev = Some(Rc::downgrade(&item));
         {
-            let mut item = (*item).borrow_mut();
+            let mut item = item.borrow_mut();
             item.next = Some(before);
             item.prev = Some(Rc::downgrade(&after));
         }
-        (*after).borrow_mut().next = Some(item);
+        after.borrow_mut().next = Some(item);
     }
 
     fn remove(at: RcNode<T>) -> RcNode<T> {
-        let prev = (*at).borrow_mut().prev.take().unwrap().upgrade().unwrap();
-        let next = (*at).borrow_mut().next.take().unwrap();
-        (*next).borrow_mut().prev = Some(Rc::downgrade(&prev));
-        (*prev).borrow_mut().next = Some(next);
+        let prev = at.borrow_mut().prev.take().unwrap().upgrade().unwrap();
+        let next = at.borrow_mut().next.take().unwrap();
+        next.borrow_mut().prev = Some(Rc::downgrade(&prev));
+        prev.borrow_mut().next = Some(next);
         at
     }
 }
@@ -72,9 +74,9 @@ impl<T> LinkList<T> {
     pub fn new() -> Self {
         let head = LinkNode::wrap(None);
         let tail = LinkNode::wrap(None);
-        (*tail).borrow_mut().prev = Some(Rc::downgrade(&head));
+        tail.borrow_mut().prev = Some(Rc::downgrade(&head));
         let weak_tail = Rc::downgrade(&tail);
-        (*head).borrow_mut().next = Some(tail);
+        head.borrow_mut().next = Some(tail);
         Self {
             len: 0,
             head,
@@ -165,7 +167,7 @@ impl<T> Iterator<RcNode<T>> for LinkList<T> {
     }
 
     fn next(iter: &mut Iter<Self, RcNode<T>>) -> Option<RcNode<T>> {
-        let n = (*iter.cur).borrow().next.clone().unwrap();
+        let n = iter.cur.borrow().next.clone().unwrap();
         if Rc::ptr_eq(&n, &iter.data.tail.upgrade().unwrap()) {
             return None;
         }
@@ -174,13 +176,7 @@ impl<T> Iterator<RcNode<T>> for LinkList<T> {
     }
 
     fn prev(iter: &mut Iter<Self, RcNode<T>>) -> Option<RcNode<T>> {
-        let p = (*iter.cur)
-            .borrow()
-            .prev
-            .clone()
-            .unwrap()
-            .upgrade()
-            .unwrap();
+        let p = iter.cur.borrow().prev.clone().unwrap().upgrade().unwrap();
         if Rc::ptr_eq(&p, &iter.data.head) {
             return None;
         }
@@ -205,22 +201,22 @@ mod test {
         assert_eq!(list.len(), v.len());
         let mut prev = list.head.clone();
         for x in v.iter() {
-            let n = (*prev).borrow().next.clone().unwrap();
-            assert_eq!((*n).borrow().val.unwrap(), *x);
+            let n = prev.borrow().next.clone().unwrap();
+            assert_eq!(n.borrow().val.unwrap(), *x);
             prev = n;
         }
         assert_eq!(
-            Rc::downgrade((*prev).borrow().next.as_ref().unwrap()).as_ptr(),
+            Rc::downgrade(prev.borrow().next.as_ref().unwrap()).as_ptr(),
             list.tail.as_ptr()
         );
         let mut next = list.tail.upgrade().unwrap();
         for x in v.into_iter().rev() {
-            let n = (*next).borrow().prev.clone().unwrap().upgrade().unwrap();
-            assert_eq!((*n).borrow().val.unwrap(), x);
+            let n = next.borrow().prev.clone().unwrap().upgrade().unwrap();
+            assert_eq!(n.borrow().val.unwrap(), x);
             next = n;
         }
         assert_eq!(
-            (*next).borrow().prev.as_ref().unwrap().as_ptr(),
+            next.borrow().prev.as_ref().unwrap().as_ptr(),
             Rc::downgrade(&list.head).as_ptr()
         );
     }
